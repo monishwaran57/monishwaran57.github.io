@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Opening Stock — Edit Photos & Quantity</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;margin:0;padding:12px;background:#f7f9fb;color:#111}
+    h1{font-size:18px;margin:0}
+    button,input{padding:10px;border-radius:8px;border:1px solid #d5dce6;background:white}
+    .controls{margin:12px 0;display:flex;gap:8px;flex-wrap:wrap}
+    .card{background:white;border-radius:10px;padding:10px;margin-bottom:10px;box-shadow:0 1px 4px rgba(20,30,40,0.06)}
+    .thumb{width:96px;height:96px;object-fit:cover;border-radius:6px;border:1px solid #e6eef9}
+    .item{display:flex;gap:8px;align-items:center}
+    .item .meta{flex:1}
+    label{font-size:13px;color:#333}
+    .small{font-size:12px;color:#666}
+    .list{margin-top:12px}
+    footer{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+    .danger{background:#fff6f6;border-color:#ffd6d6}
+    .totals{margin-top:16px;font-size:14px;font-weight:bold}
+    .thumbs{display:flex;gap:6px}
+    .timestamp{font-size:11px;color:#555;margin-top:4px}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Opening Stock — Edit Photos & Quantity</h1>
+  </header>
+
+  <div class="card">
+    <div class="small">Take product photo + barcode photo, enter quantity. You can edit quantity and photos later. Data is saved permanently until you clear all.</div>
+
+    <div class="controls">
+      <label>
+        <div style="font-size:13px;margin-bottom:6px">Product photo</div>
+        <input id="productPic" type="file" accept="image/*" capture="environment" />
+      </label>
+      <label>
+        <div style="font-size:13px;margin-bottom:6px">Barcode photo</div>
+        <input id="barcodePic" type="file" accept="image/*" capture="environment" />
+      </label>
+      <div style="display:flex;align-items:flex-end;gap:8px;">
+        <button id="addBtn">Add item</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="list" class="list"></div>
+  <div id="totals" class="totals"></div>
+
+  <footer>
+    <button id="exportJson">Export JSON</button>
+    <button id="exportCsv">Export CSV</button>
+    <button id="clearAll" class="danger">Clear all</button>
+    <button onclick="installApp()">Install to Home Screen</button>
+  </footer>
+
+  <script>
+    const productPic = document.getElementById('productPic');
+    const barcodePic = document.getElementById('barcodePic');
+    const addBtn = document.getElementById('addBtn');
+    const listEl = document.getElementById('list');
+    const exportJson = document.getElementById('exportJson');
+    const exportCsv = document.getElementById('exportCsv');
+    const clearAll = document.getElementById('clearAll');
+    const totalsEl = document.getElementById('totals');
+
+    let items = [];
+
+    async function fileToDataURL(file){
+      return new Promise((res, rej)=>{
+        const fr = new FileReader();
+        fr.onload = () => res(fr.result);
+        fr.onerror = rej;
+        fr.readAsDataURL(file);
+      });
+    }
+
+    function renderList(){
+      listEl.innerHTML = '';
+      let totalQty = 0;
+      items.forEach((it, idx)=>{
+        totalQty += Number(it.quantity)||0;
+        const card = document.createElement('div'); card.className='card item';
+        const thumbs = document.createElement('div'); thumbs.className='thumbs';
+        const img1 = document.createElement('img'); img1.className='thumb'; img1.src = it.productImage;
+        const img2 = document.createElement('img'); img2.className='thumb'; img2.src = it.barcodeImage;
+        thumbs.appendChild(img1); thumbs.appendChild(img2);
+
+        const meta = document.createElement('div'); meta.className='meta';
+        meta.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div><label>Quantity</label><div>${it.quantity}</div></div>
+          </div>
+          <div class="timestamp">Added: ${it.timestamp}</div>
+          <div style="margin-top:8px;display:flex;gap:6px;">
+            <button data-idx="${idx}" class="edit">Edit</button>
+            <button data-idx="${idx}" class="delete">Delete</button>
+            <button data-idx="${idx}" class="viewImage">View photos</button>
+          </div>
+        `;
+        card.appendChild(thumbs);
+        card.appendChild(meta);
+        listEl.appendChild(card);
+      });
+      totalsEl.textContent = items.length ? `Total items: ${items.length} | Total quantity: ${totalQty}` : '';
+
+      [...document.querySelectorAll('.delete')].forEach(btn=>btn.onclick = e=>{
+        const i = +e.currentTarget.dataset.idx; items.splice(i,1); renderList(); saveAll();
+      });
+
+      [...document.querySelectorAll('.edit')].forEach(btn=>btn.onclick = async e=>{
+        const i = +e.currentTarget.dataset.idx;
+        const it = items[i];
+        const newQty = prompt('Quantity for this product', it.quantity);
+        if(newQty!=null) it.quantity = newQty;
+
+        // Change photos
+        const changePhotos = confirm('Do you want to change photos?');
+        if(changePhotos){
+          const prodFile = await selectFile('Select new product photo');
+          if(prodFile) it.productImage = await fileToDataURL(prodFile);
+          const barFile = await selectFile('Select new barcode photo');
+          if(barFile) it.barcodeImage = await fileToDataURL(barFile);
+        }
+
+        renderList();
+        saveAll();
+      });
+
+      [...document.querySelectorAll('.viewImage')].forEach(btn=>btn.onclick = e=>{
+        const i = +e.currentTarget.dataset.idx; const it = items[i];
+        const w = window.open();
+        w.document.body.style.margin='0';
+        const img1 = w.document.createElement('img'); img1.src = it.productImage; img1.style.maxWidth='49%';
+        const img2 = w.document.createElement('img'); img2.src = it.barcodeImage; img2.style.maxWidth='49%';
+        w.document.title = 'Product + Barcode photos';
+        w.document.body.appendChild(img1);
+        w.document.body.appendChild(img2);
+      });
+    }
+
+    addBtn.addEventListener('click', async ()=>{
+      const prodFile = productPic.files[0];
+      const barFile = barcodePic.files[0];
+      if(!prodFile || !barFile){ alert('Please take both product and barcode photos first.'); return; }
+
+      const productImage = await fileToDataURL(prodFile);
+      const barcodeImage = await fileToDataURL(barFile);
+      const quantity = prompt('Enter quantity for this product', '1');
+      if(quantity==null) return;
+      const timestamp = new Date().toLocaleString();
+
+      items.push({ productImage, barcodeImage, quantity, timestamp });
+      productPic.value = '';
+      barcodePic.value = '';
+
+      renderList();
+      saveAll();
+    });
+
+    function selectFile(message){
+      return new Promise((resolve)=>{
+        const input = document.createElement('input');
+        input.type='file';
+        input.accept='image/*';
+        input.capture='environment';
+        input.onchange = e=>resolve(e.target.files[0]||null);
+        input.click();
+      });
+    }
+
+    exportJson.addEventListener('click', ()=>{
+      if(!items.length){ alert('No items to export'); return; }
+      const blob = new Blob([JSON.stringify(items, null, 2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = `opening_stock.json`; a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    exportCsv.addEventListener('click', ()=>{
+      if(!items.length){ alert('No items to export'); return; }
+      const rows = [['quantity','productImage','barcodeImage','timestamp']];
+      items.forEach(it=>rows.push([it.quantity, it.productImage, it.barcodeImage, it.timestamp]));
+      const csv = rows.map(r=>r.join(',')).join('\n');
+      const blob = new Blob([csv], {type:'text/csv'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = `opening_stock.csv`; a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    clearAll.addEventListener('click', ()=>{
+      if(confirm('Clear all items?')){ items = []; renderList(); saveAll(); }
+    });
+
+    function saveAll(){
+      try{
+        localStorage.setItem('opening_stock_edit_photos', JSON.stringify(items||[]));
+      }catch(e){}
+    }
+
+    function loadAll(){
+      try{
+        const prev = localStorage.getItem('opening_stock_edit_photos');
+        if(prev){ items = JSON.parse(prev); renderList(); }
+      }catch(e){}
+    }
+
+    let deferredPrompt;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+    });
+    function installApp(){
+      if(deferredPrompt){
+        deferredPrompt.prompt();
+      } else {
+        alert('To install: open browser menu → Add to Home screen');
+      }
+    }
+
+    loadAll();
+  </script>
+</body>
+</html>
