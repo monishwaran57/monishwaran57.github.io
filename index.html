@@ -22,6 +22,8 @@
     .thumbs{display:flex;gap:6px}
     .timestamp{font-size:11px;color:#555;margin-top:4px}
   </style>
+  <!-- Include jsPDF library from CDN for PDF generation -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
   <header>
@@ -52,6 +54,7 @@
   <footer>
     <button id="exportJson">Export JSON</button>
     <button id="exportCsv">Export CSV</button>
+    <button id="exportPdf">Export PDF</button>
     <button id="clearAll" class="danger">Clear all</button>
     <button onclick="installApp()">Install to Home Screen</button>
   </footer>
@@ -63,6 +66,7 @@
     const listEl = document.getElementById('list');
     const exportJson = document.getElementById('exportJson');
     const exportCsv = document.getElementById('exportCsv');
+    const exportPdf = document.getElementById('exportPdf');
     const clearAll = document.getElementById('clearAll');
     const totalsEl = document.getElementById('totals');
 
@@ -188,6 +192,79 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a'); a.href = url; a.download = `opening_stock.csv`; a.click();
       URL.revokeObjectURL(url);
+    });
+
+    exportPdf.addEventListener('click', async () => {
+      if (!items.length) {
+        alert('No items to export');
+        return;
+      }
+
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      let yPos = 20;
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const imgWidth = 80;
+      const imgHeight = 60;
+      const margin = 10;
+
+      // Title
+      doc.setFontSize(16);
+      doc.text('Inventory Report', margin, yPos);
+      yPos += 15;
+
+      // Totals
+      doc.setFontSize(12);
+      doc.text(`Total items: ${items.length} | Total quantity: ${items.reduce((sum, it) => sum + Number(it.quantity || 0), 0)}`, margin, yPos);
+      yPos += 10;
+
+      items.forEach((it, idx) => {
+        // Check if we need a new page
+        if (yPos > pageHeight - 100) {
+          doc.addPage();
+          yPos = 20;
+        }
+
+        // Item header
+        doc.setFontSize(12);
+        doc.text(`Item ${idx + 1} - Quantity: ${it.quantity} - Added: ${it.timestamp}`, margin, yPos);
+        yPos += 8;
+
+        // Product image
+        if (it.productImage) {
+          try {
+            doc.addImage(it.productImage, 'JPEG', margin, yPos, imgWidth, imgHeight);
+          } catch (e) {
+            doc.text('Product image unavailable', margin, yPos);
+          }
+          yPos += imgHeight + 5;
+        }
+
+        // Barcode image (place next to product if space allows, but for simplicity, below)
+        if (it.barcodeImage) {
+          if (yPos > pageHeight - 100) {
+            doc.addPage();
+            yPos = 20;
+          }
+          try {
+            doc.addImage(it.barcodeImage, 'JPEG', margin, yPos, imgWidth, imgHeight);
+          } catch (e) {
+            doc.text('Barcode image unavailable', margin, yPos);
+          }
+          yPos += imgHeight + 10;
+        } else {
+          yPos += 5;
+        }
+
+        // Separator
+        doc.setDrawColor(200);
+        doc.line(margin, yPos, pageWidth - margin, yPos);
+        yPos += 10;
+      });
+
+      // Save the PDF
+      doc.save('inventory_report.pdf');
     });
 
     clearAll.addEventListener('click', ()=>{
